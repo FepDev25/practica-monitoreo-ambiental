@@ -1,0 +1,14 @@
+private/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+resultados/
+
+# Editores / SO
+.DS_Store
+.idea/
+.vscode/
