@@ -17,6 +17,7 @@ class EstacionAmbiental:
         self._rng = random.Random(semilla)
         self.contador_mediciones = 0
 
+    # Genera una medicion simulada para una variable dada
     def generar_medicion(self, variable: str, ciclo: int) -> Medicion:
         cfg = VARIABLES[variable]
         valor = self._rng.gauss(cfg.media, cfg.desviacion)
@@ -41,7 +42,7 @@ class EstacionAmbiental:
             f"variables={self.variables})"
         )
 
-# Crea `num_estaciones` estaciones distribuidas ciclicamente entre zonas
+# Crea num_estaciones estaciones distribuidas ciclicamente entre zonas
 def crear_estaciones(num_estaciones: int, variables: tuple[str, ...] = VARIABLES_POR_DEFECTO, semilla_base: int = 1234, ) -> list[EstacionAmbiental]:
     estaciones: list[EstacionAmbiental] = []
     for i in range(num_estaciones):
