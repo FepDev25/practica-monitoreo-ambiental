@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Sistema de monitoreo ambiental urbano con paralelismo basado en procesos e hilos"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pyqt6>=6.11.0",
+]
 
 [tool.uv]
 package = false
