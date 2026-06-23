@@ -39,7 +39,7 @@ def main() -> None:
     parser.add_argument(
         "--configuraciones",
         type=_parsear_configuraciones,
-        default="x".join(f"{e}x{c}" for e, c in CONFIGURACIONES_POR_DEFECTO),
+        default=",".join(f"{e}x{c}" for e, c in CONFIGURACIONES_POR_DEFECTO),
         help="Tamanyos a probar, formato NxM. Por defecto 4x10,8x20,12x30.",
     )
     parser.add_argument(
