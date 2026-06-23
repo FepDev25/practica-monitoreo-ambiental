@@ -1,0 +1,9 @@
+clave,valor
+python,3.12.3
+implementacion,CPython
+build_free_threading,False
+sistema,Linux
+release,6.17.0-29-generic
+maquina,x86_64
+cpu_count,12
+gil_habilitado,

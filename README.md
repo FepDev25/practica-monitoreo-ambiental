@@ -9,7 +9,16 @@ procesos, con un benchmark que los compara.
 
 - Python >= 3.12
 - PyQt6 para la GUI
-- `uv` como gestor de entornos
+Instalacion recomendada con entorno virtual:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Opcionalmente, si se usa `uv`:
 
 ```bash
 uv sync
@@ -48,9 +57,9 @@ resultados/             CSV generados por el benchmark
 ### Benchmark
 
 ```bash
-uv run python -m benchmark
-uv run python -m benchmark --configuraciones 4x10,8x20,12x30 --repeticiones 3 --intensidad 2000
-uv run python -m benchmark --modo secuencial --configuraciones 4x10 --repeticiones 1
+python -m benchmark
+python -m benchmark --configuraciones 4x10,8x20,12x30 --repeticiones 3 --intensidad 2000
+python -m benchmark --modo secuencial --configuraciones 4x10 --repeticiones 1
 ```
 
 Opciones:
@@ -75,7 +84,7 @@ Salida en `resultados/`:
 ### GUI
 
 ```bash
-uv run python -m gui
+python -m gui
 ```
 
 Muestra en tiempo real: tabla de estaciones con estado, ultima medicion,
@@ -100,8 +109,8 @@ flowchart TD
 
     subgraph VERSIONES[3 implementaciones]
         SEQ[ControladorMonitoreo - secuencial]
-        HILOS[ControladorHilos - pendiente]
-        PROCESOS[ControladorProcesos - pendiente]
+        HILOS[ControladorHilos - threading]
+        PROCESOS[ControladorProcesos - multiprocessing]
     end
 
     BASE_CTRL --> SEQ
