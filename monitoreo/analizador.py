@@ -145,53 +145,6 @@ class AnalizadorDatos:
         )
         return [fila for sub in resultados for fila in sub]
 
-    # uso por procesos sin estado para Pool
-    def analizar_bloque(self,mediciones: list[Medicion],intensidad: int | None = None,) -> dict:
-        n = len(mediciones)
-        if n == 0:
-            return {
-                "total_mediciones": 0,
-                "estadisticas": {},
-                "indice_compuesto": 0.0,
-                "indice_zona": {},
-                "alertas_bloque": 0,
-            }
-        intens = intensidad if intensidad is not None else self.intensidad
-
-        por_variable: dict[str, list[float]] = {}
-        for m in mediciones:
-            por_variable.setdefault(m.variable, []).append(m.valor)
-
-        estadisticas: dict[str, EstadisticasVariable] = {}
-        for variable, valores in por_variable.items():
-            estadisticas[variable] = _estadisticas_variable(variable, valores)
-
-        riesgos = [VARIABLES[m.variable].riesgo(m.valor) for m in mediciones]
-        riesgos_suavizados = self._suavizar_plano(riesgos, intens)
-
-        por_zona: dict[str, list[float]] = {}
-        for m, r in zip(mediciones, riesgos_suavizados):
-            por_zona.setdefault(m.zona, []).append(r)
-
-        indice_zona = {
-            zona: sum(vals) / len(vals) for zona, vals in por_zona.items()
-        }
-        indice_compuesto = sum(riesgos_suavizados) / n
-
-        alertas = 0
-        for m in mediciones:
-            hay, _, _ = es_alerta(m.variable, m.valor)
-            if hay:
-                alertas += 1
-
-        return {
-            "total_mediciones": n,
-            "estadisticas": {k: asdict(v) for k, v in estadisticas.items()},
-            "indice_compuesto": indice_compuesto,
-            "indice_zona": indice_zona,
-            "alertas_bloque": alertas,
-        }
-
     @staticmethod
     def _suavizar_plano(valores: list[float], intensidad: int) -> list[float]:
         n = len(valores)
@@ -206,63 +159,6 @@ class AnalizadorDatos:
                 nuevo[i] = 0.5 * actual[i] + 0.25 * izq + 0.25 * der
             actual = nuevo
         return actual
-
-    # Fusionar los resultados parciales devueltos por `analizar_bloque`
-    @staticmethod
-    def combinar_bloques(bloques: list[dict]) -> dict:
-        total = 0
-        estadisticas: dict[str, dict] = {}
-        indice_zona: dict[str, list[float]] = {}
-        indice_compuesto_pond = 0.0
-        alertas = 0
-
-        for bloque in bloques:
-            total += bloque["total_mediciones"]
-            alertas += bloque["alertas_bloque"]
-            indice_compuesto_pond += bloque["indice_compuesto"] * bloque["total_mediciones"]
-            for zona, valor in bloque["indice_zona"].items():
-                indice_zona.setdefault(zona, []).append(valor)
-            for variable, stats in bloque["estadisticas"].items():
-                if variable not in estadisticas:
-                    estadisticas[variable] = {
-                        "total": 0, "suma_prom": 0.0,
-                        "maximo": float("-inf"), "minimo": float("inf"),
-                        "suma_var": 0.0,
-                    }
-                e = estadisticas[variable]
-                e["total"] += stats["total_mediciones"]
-                e["suma_prom"] += stats["promedio"] * stats["total_mediciones"]
-                if stats["maximo"] > e["maximo"]:
-                    e["maximo"] = stats["maximo"]
-                if stats["minimo"] < e["minimo"]:
-                    e["minimo"] = stats["minimo"]
-                e["suma_var"] += stats["desviacion"] ** 2 * stats["total_mediciones"]
-
-        estadisticas_final: dict[str, EstadisticasVariable] = {}
-        for variable, e in estadisticas.items():
-            if e["total"] == 0:
-                continue
-            estadisticas_final[variable] = EstadisticasVariable(
-                variable=variable,
-                promedio=e["suma_prom"] / e["total"],
-                maximo=e["maximo"],
-                minimo=e["minimo"],
-                desviacion=(e["suma_var"] / e["total"]) ** 0.5,
-                total_mediciones=e["total"],
-            )
-
-        indice_zona_final = {
-            zona: sum(vals) / len(vals) for zona, vals in indice_zona.items() if vals
-        }
-        indice_global = indice_compuesto_pond / total if total else 0.0
-
-        return {
-            "total_mediciones": total,
-            "estadisticas": estadisticas_final,
-            "indice_compuesto": indice_global,
-            "indice_zona": indice_zona_final,
-            "total_alertas": alertas,
-        }
 
     # estadisticas globales agregadas al final de la simulacion
     def resumen(self) -> dict:
