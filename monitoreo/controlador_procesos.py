@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 import queue
 import threading
 import time
@@ -74,6 +75,11 @@ class ControladorProcesos(ControladorMonitoreo):
     La comunicacion entre procesos se realiza mediante Queue.
     La sincronizacion por ciclos se realiza con Barrier y la finalizacion
     coordinada con Event.
+
+    Ademas, el analisis pesado de cada ciclo (suavizado del tensor de riesgo)
+    se reparte entre un Pool de procesos. Asi el trabajo intensivo de CPU,
+    que el GIL impide acelerar con hilos, si se paraleliza realmente con
+    procesos y se observa el aceleramiento frente a la version secuencial.
     """
 
     MODO: str = "procesos"
@@ -96,6 +102,12 @@ class ControladorProcesos(ControladorMonitoreo):
         barrera_fin_ciclo = mp.Barrier(self.num_estaciones + 1)
         cola_mediciones = mp.Queue()
         cola_eventos = mp.Queue()
+
+        # Pool dedicado a repartir el analisis pesado de cada ciclo.
+        n_analisis = min(os.cpu_count() or 2, self.num_estaciones * len(self.estaciones[0].variables))
+        n_analisis = max(2, n_analisis)
+        pool_analisis = mp.Pool(processes=n_analisis)
+        self.analizador.configurar_paralelismo(pool_analisis.map, n_analisis)
 
         procesos: list[mp.Process] = [
             mp.Process(
@@ -180,6 +192,10 @@ class ControladorProcesos(ControladorMonitoreo):
 
         finally:
             evento_detener.set()
+
+            pool_analisis.close()
+            pool_analisis.join()
+            self.analizador.configurar_paralelismo(None, 1)
 
             for proceso in procesos:
                 proceso.join(timeout=5)

@@ -1,9 +1,9 @@
 clave,valor
-python,3.12.3
+python,3.12.12
 implementacion,CPython
 build_free_threading,False
 sistema,Linux
-release,6.17.0-29-generic
+release,7.0.12-arch1-1
 maquina,x86_64
-cpu_count,12
+cpu_count,20
 gil_habilitado,

@@ -87,11 +87,7 @@ Salida en `resultados/`:
 python -m gui
 ```
 
-Muestra en tiempo real: tabla de estaciones con estado, ultima medicion,
-alertas activas coloreadas por severidad, estadisticas, informacion del
-entorno y cronometro. La simulacion corre en un hilo aparte mediante
-`WorkerSimulacion` (QThread) que emite senales Qt, por lo que la GUI no se
-congela.
+Muestra en tiempo real: tabla de estaciones con estado, ultima medicion, alertas activas coloreadas por severidad, estadisticas, informacion del entorno y cronometro. La simulacion corre en un hilo aparte mediante `WorkerSimulacion` (QThread) que emite senales Qt, por lo que la GUI no se congela.
 
 ## Arquitectura
 
@@ -167,9 +163,7 @@ flowchart TD
 | pm25 | ug/m3 | 18.0 | 7.0 | - | 30.0 | 0.25 |
 | pm10 | ug/m3 | 28.0 | 10.0 | - | 48.0 | 0.15 |
 
-Zonas disponibles: Centro Historico, San Blas, San Sebastian, El Sagrario,
-El Vecino, Banos, Monay, Yanuncay, Tomebamba, Los Eucaliptos, Sayausi,
-Nulti.
+Zonas disponibles: Centro Historico, San Blas, San Sebastian, El Sagrario, El Vecino, Banos, Monay, Yanuncay, Tomebamba, Los Eucaliptos, Sayausi, Nulti.
 
 ## Metricas del benchmark
 
