@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
+from multiprocessing.dummy import Pool as ThreadPool
 
 from .controlador import ControladorMonitoreo
 from .eventos import (
@@ -21,6 +23,12 @@ class ControladorHilos(ControladorMonitoreo):
     comparten un buffer de mediciones protegido con Lock. Dos Barrier
     sincronizan el inicio y el fin de cada ciclo, de forma que el
     controlador solo analiza cuando todas las estaciones terminaron.
+
+    El analisis pesado (suavizado del tensor de riesgo) se reparte entre un
+    ThreadPool, igual que la version de procesos usa un Pool. Bajo el GIL
+    (CPython estandar) esto NO acelera, porque solo un hilo ejecuta bytecode
+    Python a la vez; en una build free-threading (sin GIL) el mismo codigo
+    si aprovecha varios nucleos. Sirve para evidenciar el impacto del GIL.
     """
 
     MODO: str = "hilos"
@@ -36,6 +44,15 @@ class ControladorHilos(ControladorMonitoreo):
             intensidad=self.intensidad,
             estaciones=[(e.id, e.nombre, e.zona) for e in self.estaciones],
         ))
+
+        # ThreadPool para repartir el suavizado entre hilos
+        n_analisis = min(
+            os.cpu_count() or 2,
+            self.num_estaciones * len(self.estaciones[0].variables),
+        )
+        n_analisis = max(2, n_analisis)
+        pool_analisis = ThreadPool(processes=n_analisis)
+        self.analizador.configurar_paralelismo(pool_analisis.map, n_analisis)
 
         buffer_mediciones: list[Medicion] = []
         lock_buffer = threading.Lock()
@@ -145,6 +162,9 @@ class ControladorHilos(ControladorMonitoreo):
             evento_detener.set()
             for hilo in hilos:
                 hilo.join()
+            pool_analisis.close()
+            pool_analisis.join()
+            self.analizador.configurar_paralelismo(None, 1)
 
         if errores:
             raise errores[0]

@@ -13,7 +13,6 @@ class VariableConfig:
     desviacion: float
     umbral_min: float | None
     umbral_max: float | None
-    peso: float
 
     # Normaliza un valor a un riesgo en [0, ~1.5] respecto a los umbrales
     def riesgo(self, valor: float) -> float:
@@ -28,17 +27,15 @@ class VariableConfig:
 
 
 VARIABLES: dict[str, VariableConfig] = {
-    "temperatura": VariableConfig("temperatura", "°C", 14.0, 3.5, 2.0, 22.0, 0.15),
-    "humedad": VariableConfig("humedad", "%", 72.0, 8.0, 40.0, 92.0, 0.10),
-    "ruido": VariableConfig("ruido", "dB", 55.0, 12.0, None, 80.0, 0.20),
-    "co2": VariableConfig("co2", "ppm", 420.0, 25.0, None, 470.0, 0.15),
-    "pm25": VariableConfig("pm25", "ug/m3", 18.0, 7.0, None, 30.0, 0.25),
-    "pm10": VariableConfig("pm10", "ug/m3", 28.0, 10.0, None, 48.0, 0.15),
+    "temperatura": VariableConfig("temperatura", "°C", 14.0, 3.5, 2.0, 22.0),
+    "humedad": VariableConfig("humedad", "%", 72.0, 8.0, 40.0, 92.0),
+    "ruido": VariableConfig("ruido", "dB", 55.0, 12.0, None, 80.0),
+    "co2": VariableConfig("co2", "ppm", 420.0, 25.0, None, 470.0),
+    "pm25": VariableConfig("pm25", "ug/m3", 18.0, 7.0, None, 30.0),
+    "pm10": VariableConfig("pm10", "ug/m3", 28.0, 10.0, None, 48.0),
 }
 
 VARIABLES_POR_DEFECTO: tuple[str, ...] = tuple(VARIABLES.keys())
-
-PESO_TOTAL: float = sum(v.peso for v in VARIABLES.values())
 
 ZONAS_CUENCA: tuple[str, ...] = (
     "Centro Historico",

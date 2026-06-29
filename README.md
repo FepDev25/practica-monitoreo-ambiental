@@ -3,25 +3,27 @@
 Simulacion de un sistema de monitoreo ambiental para la ciudad de Cuenca. Estaciones distribuidas por zonas urbanas generan mediciones periodicas de variables ambientales (temperatura, humedad, ruido, CO2, PM2.5, PM10). Un controlador central recolecta los datos, un analizador procesa estadisticas e indices ambientales, se generan alertas al superar umbrales y una GUI visualiza todo en tiempo real.
 
 El sistema implementa tres modelos de ejecucion: secuencial, hilos y
-procesos, con un benchmark que los compara.
+procesos, con un benchmark que los compara. Esta pensado para ejecutarse
+sobre una build **free-threading (sin GIL)** de Python, de modo que la
+version por hilos pueda paralelizar de verdad la carga de CPU.
 
 ## Requisitos
 
-- Python >= 3.12
-- PyQt6 para la GUI
-Instalacion recomendada con entorno virtual:
+- Python **3.14t** (build free-threading, sin GIL). Tambien sirve 3.13t.
+- Sin dependencias externas: la GUI usa **tkinter** (stdlib).
+
+Instalacion del interprete free-threaded con `uv` (recomendado):
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e .
+uv python install 3.14t
+uv sync            # crea el entorno desde .python-version (3.14t), sin dependencias
 ```
 
-Opcionalmente, si se usa `uv`:
+Alternativa manual con el interprete free-threaded ya instalado:
 
 ```bash
-uv sync
+python3.14t -m venv .venv
+source .venv/bin/activate
 ```
 
 ## Estructura del proyecto
@@ -35,17 +37,17 @@ monitoreo/              paquete base compartido por las 3 versiones
   analizador.py         AnalizadorDatos con la carga de CPU del sistema
   eventos.py            eventos tipados para la GUI
   controlador.py        ControladorMonitoreo (base + secuencial)
-  controlador_hilos.py  ControladorHilos
-  controlador_procesos.py  ControladorProcesos
+  controlador_hilos.py  ControladorHilos (threading + ThreadPool)
+  controlador_procesos.py  ControladorProcesos (multiprocessing + Pool)
   __init__.py
 
 benchmark/              motor de benchmarking
   runner.py             ejecucion, metricas y CSV
   __main__.py           CLI: python -m benchmark
 
-gui/                    interfaz grafica con PyQt6
-  estilo.py             paleta ambiental y hoja QSS
-  worker_simulacion.py  QThread puente entre controlador y GUI
+gui/                    interfaz grafica con tkinter
+  estilo.py             paleta ambiental y estilos ttk
+  worker_simulacion.py  hilo puente entre controlador y GUI (cola de eventos)
   ventana_principal.py  ventana principal con todos los paneles
   __main__.py           CLI: python -m gui
 
@@ -54,12 +56,24 @@ resultados/             CSV generados por el benchmark
 
 ## Ejecucion
 
+En la build free-threading el GIL ya esta apagado por defecto; el
+`PYTHON_GIL=0` se incluye por seguridad para que ninguna extension lo
+reactive.
+
+### GUI
+
+```bash
+PYTHON_GIL=0 python3.14t -m gui
+```
+
+Muestra en tiempo real: tabla de estaciones con estado, ultima medicion, alertas activas coloreadas por severidad, estadisticas, informacion del entorno (incluido el estado del GIL) y cronometro. La simulacion corre en un hilo aparte mediante `WorkerSimulacion` (`threading.Thread`), que publica los eventos en una `queue.Queue` que la ventana drena con `root.after()`, por lo que la GUI no se congela.
+
 ### Benchmark
 
 ```bash
-python -m benchmark
-python -m benchmark --configuraciones 4x10,8x20,12x30 --repeticiones 3 --intensidad 2000
-python -m benchmark --modo secuencial --configuraciones 4x10 --repeticiones 1
+PYTHON_GIL=0 python3.14t -m benchmark
+PYTHON_GIL=0 python3.14t -m benchmark --configuraciones 4x10,8x20,12x30 --repeticiones 3 --intensidad 12000
+PYTHON_GIL=0 python3.14t -m benchmark --modo secuencial --configuraciones 4x10 --repeticiones 1
 ```
 
 Opciones:
@@ -80,14 +94,6 @@ Salida en `resultados/`:
 - `resumen.csv`: `Ts`, `Tthread`, `Tprocess`, `Sthread = Ts / Tthread`,
   `Sprocess = Ts / Tprocess` por configuracion.
 - `entorno.csv`: version de Python, SO, nucleos y estado del GIL.
-
-### GUI
-
-```bash
-python -m gui
-```
-
-Muestra en tiempo real: tabla de estaciones con estado, ultima medicion, alertas activas coloreadas por severidad, estadisticas, informacion del entorno y cronometro. La simulacion corre en un hilo aparte mediante `WorkerSimulacion` (QThread) que emite senales Qt, por lo que la GUI no se congela.
 
 ## Arquitectura
 
@@ -123,7 +129,7 @@ flowchart TD
     RUNNER --> HILOS
     RUNNER --> PROCESOS
 
-    subgraph GUI[gui - PyQt6]
+    subgraph GUI[gui - tkinter]
         WORKER[WorkerSimulacion]
         VENTANA[VentanaPrincipal]
     end
@@ -132,36 +138,41 @@ flowchart TD
     WORKER --> SEQ
     WORKER --> HILOS
     WORKER --> PROCESOS
-    WORKER -. "senales Qt" .-> VENTANA
+    WORKER -. "cola de eventos" .-> VENTANA
 ```
 
 ### Clases principales
 
 | Clase | Responsabilidad |
 |-------|-----------------|
-| `VariableConfig` | parametros de una variable ambiental (media, desviacion, umbrales, peso) |
+| `VariableConfig` | parametros de una variable ambiental (media, desviacion, umbrales) |
 | `Medicion` | lectura de una estacion (estacion, zona, variable, valor, ciclo, tiempo) |
 | `AlertaAmbiental` | alerta al superar un umbral (variable, valor, umbral, severidad) |
 | `EstacionAmbiental` | genera mediciones simuladas con `random.gauss` por variable |
 | `AnalizadorDatos` | estadisticas, media movil, indice ambiental compuesto, analisis por bloques |
 | `ControladorMonitoreo` | orquesta estaciones, analizador, alertas y mide tiempos |
 | `ResultadoEjecucion` | salida estandarizada de cualquier version |
-| `WorkerSimulacion` | QThread que ejecuta la simulacion y emite senales Qt |
+| `WorkerSimulacion` | hilo que ejecuta la simulacion y publica eventos en una cola |
 
-### Carga de CPU
+### Carga de CPU y el GIL
 
-`AnalizadorDatos` esta escrito en Python puro sin numpy. El indice ambiental compuesto aplica `intensidad` pasadas de suavizado sobre un tensor de riesgos. Al mantener el GIL durante toda la numerica, la version por hilos no puede paralelizar esta carga, mientras que la version por procesos si puede distribuirla. Esa es la comparacion que el benchmark evidencia.
+`AnalizadorDatos` esta escrito en Python puro sin numpy. El indice ambiental compuesto aplica `intensidad` pasadas de suavizado sobre un tensor de riesgos, y ese trabajo se reparte en bloques tanto en la version por hilos (`ThreadPool`) como en la de procesos (`Pool`).
+
+- **Con GIL** (CPython estandar): solo un hilo ejecuta bytecode a la vez, asi que la version por hilos **no acelera** la numerica; la de procesos si, porque cada proceso tiene su propio interprete.
+- **Sin GIL** (build free-threading): el **mismo codigo** de hilos pasa a aprovechar varios nucleos y acelera de verdad.
+
+Ejecutar el benchmark con `intensidad` alta sobre 3.14t evidencia ese salto en `Sthread`, que es el objetivo del experimento.
 
 ## Configuracion de variables
 
-| Variable | Unidad | Media | Desviacion | Umbral min | Umbral max | Peso |
-|----------|--------|-------|------------|------------|------------|------|
-| temperatura | C | 14.0 | 3.5 | 2.0 | 22.0 | 0.15 |
-| humedad | % | 72.0 | 8.0 | 40.0 | 92.0 | 0.10 |
-| ruido | dB | 55.0 | 12.0 | - | 80.0 | 0.20 |
-| co2 | ppm | 420.0 | 25.0 | - | 470.0 | 0.15 |
-| pm25 | ug/m3 | 18.0 | 7.0 | - | 30.0 | 0.25 |
-| pm10 | ug/m3 | 28.0 | 10.0 | - | 48.0 | 0.15 |
+| Variable | Unidad | Media | Desviacion | Umbral min | Umbral max |
+|----------|--------|-------|------------|------------|------------|
+| temperatura | C | 14.0 | 3.5 | 2.0 | 22.0 |
+| humedad | % | 72.0 | 8.0 | 40.0 | 92.0 |
+| ruido | dB | 55.0 | 12.0 | - | 80.0 |
+| co2 | ppm | 420.0 | 25.0 | - | 470.0 |
+| pm25 | ug/m3 | 18.0 | 7.0 | - | 30.0 |
+| pm10 | ug/m3 | 28.0 | 10.0 | - | 48.0 |
 
 Zonas disponibles: Centro Historico, San Blas, San Sebastian, El Sagrario, El Vecino, Banos, Monay, Yanuncay, Tomebamba, Los Eucaliptos, Sayausi, Nulti.
 
@@ -172,8 +183,8 @@ flowchart LR
     TS["Ts (tiempo secuencial)"] --> STHREAD["Sthread = Ts / Tthread"]
     TS --> SPROCESS["Sprocess = Ts / Tprocess"]
     STHREAD --> Q1{"Sthread > 1?"}
-    Q1 -- Si --> R1["Hilos aceleran (I/O-bound)"]
-    Q1 -- No --> R2["Hilos no aceleran (GIL)"]
+    Q1 -- Si --> R1["Hilos aceleran (sin GIL o I/O-bound)"]
+    Q1 -- No --> R2["Hilos no aceleran (GIL activo)"]
     SPROCESS --> Q2{"Sprocess > 1?"}
     Q2 -- Si --> R3["Procesos aceleran (paralelismo real)"]
     Q2 -- No --> R4["Procesos no compensan (overhead IPC)"]

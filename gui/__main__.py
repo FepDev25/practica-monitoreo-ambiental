@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import sys
-
-from PyQt6.QtWidgets import QApplication
+import tkinter as tk
 
 from gui.estilo import aplicar_tema
 from gui.ventana_principal import VentanaPrincipal
 
 
 def main() -> None:
-    app = QApplication(sys.argv)
-    app.setApplicationName("Monitoreo Ambiental Cuenca")
-    aplicar_tema(app)
-    ventana = VentanaPrincipal()
-    ventana.show()
-    sys.exit(app.exec())
+    root = tk.Tk()
+    aplicar_tema(root)
+    VentanaPrincipal(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":
