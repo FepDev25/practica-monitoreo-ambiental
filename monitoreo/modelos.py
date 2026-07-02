@@ -14,6 +14,9 @@ class Medicion:
     valor: float
     ciclo: int
     tiempo: float
+    # rank del proceso MPI que genero/proceso la medicion.
+    # -1 = sin MPI (versiones secuencial, hilos y procesos de la P4).
+    rank_mpi: int = -1
 
     def __str__(self) -> str:
         return (

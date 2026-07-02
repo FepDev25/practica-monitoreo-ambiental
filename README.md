@@ -95,6 +95,43 @@ Salida en `resultados/`:
   `Sprocess = Ts / Tprocess` por configuracion.
 - `entorno.csv`: version de Python, SO, nucleos y estado del GIL.
 
+### Version MPI (memoria distribuida, practica 5)
+
+El paquete `mpi_monitoreo/` agrega una version paralela con **mpi4py** bajo modelo **SPMD**, pensada para correr en un cluster de varias computadoras. Las estaciones se reparten por dominio entre los procesos MPI (cada rank simula su lote con memoria local) y los resultados se consolidan en el rank 0.
+
+Requiere `mpi4py` + `numpy` + una implementacion de MPI (Open MPI). Se instalan
+con `uv sync`.
+
+Ejecucion local (un solo equipo, varios procesos):
+
+```bash
+mpiexec -n 1 python -m mpi_monitoreo.practica_mpi --estaciones 12 --ciclos 30 --intensidad 4000 --secuencial
+mpiexec -n 2 python -m mpi_monitoreo.practica_mpi --estaciones 12 --ciclos 30 --intensidad 4000 --secuencial
+mpiexec -n 4 python -m mpi_monitoreo.practica_mpi --estaciones 12 --ciclos 30 --intensidad 4000 --secuencial
+```
+
+Ejecucion en cluster (varios nodos via `hosts.txt`):
+
+```bash
+mpiexec -n 4 -hostfile hosts.txt python -m mpi_monitoreo.practica_mpi \
+    --estaciones 12 --ciclos 30 --intensidad 4000 --secuencial
+```
+
+Opciones: `--estaciones`, `--ciclos`, `--intensidad`, `--ventana`, `--semilla`, `--secuencial` (corre la referencia Ts en rank 0 y calcula `S = Ts / Tp`), `--salida`, `--no-csv`.
+
+Comunicacion MPI utilizada:
+
+| Operacion | Tipo | Uso |
+|-----------|------|-----|
+| `bcast` | colectiva | difunde los parametros de simulacion |
+| `scatter` | colectiva | reparte las estaciones a cada rank |
+| `isend` / `recv` | punto a punto | los workers envian sus alertas al rank 0 |
+| `gather` | colectiva | el rank 0 reune los agregados parciales |
+| `Reduce` | colectiva | suma de control sobre buffer numpy |
+| `Barrier` + `Wtime` | colectiva | acota la region cronometrada (Tp) |
+
+Salida en `resultados/mpi.csv`: `num_procesos`, tamano, `tiempo_secuencial`, `tiempo_paralelo`, `speedup`, `eficiencia`, `mediciones_por_segundo`.
+
 ## Arquitectura
 
 ```mermaid
