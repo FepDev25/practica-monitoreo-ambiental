@@ -160,6 +160,42 @@ class AnalizadorDatos:
             actual = nuevo
         return actual
 
+    # Agregados PARCIALES crudos de este analizador, pensados para
+    # consolidacion distribuida (MPI). A diferencia de resumen(), no
+    # promedia nada: devuelve sumas/conteos asociativos que se pueden
+    # combinar entre procesos para reconstruir EXACTAMENTE el resultado
+    # secuencial.
+    #
+    #   por_variable[var] = (n, suma, suma_cuadrados, maximo, minimo)
+    #   acum_zona[zona]   = riesgo acumulado de la zona (sin la clave "_global",
+    #                       que no es asociativa entre procesos)
+    #   num_ciclos        = ciclos procesados (igual en todos los ranks)
+    def parciales(self) -> dict:
+        por_variable: dict[str, tuple[int, float, float, float, float]] = {}
+        for m in self._todas:
+            if m.variable not in por_variable:
+                por_variable[m.variable] = (1, m.valor, m.valor * m.valor, m.valor, m.valor)
+            else:
+                n, suma, sumsq, mx, mn = por_variable[m.variable]
+                por_variable[m.variable] = (
+                    n + 1,
+                    suma + m.valor,
+                    sumsq + m.valor * m.valor,
+                    m.valor if m.valor > mx else mx,
+                    m.valor if m.valor < mn else mn,
+                )
+        acum_zona = {
+            zona: suma
+            for zona, suma in self._riesgo_acum_zona.items()
+            if not zona.startswith("_")
+        }
+        return {
+            "total_mediciones": len(self._todas),
+            "por_variable": por_variable,
+            "acum_zona": acum_zona,
+            "num_ciclos": self._ciclos_procesados,
+        }
+
     # estadisticas globales agregadas al final de la simulacion
     def resumen(self) -> dict:
         por_variable: dict[str, list[float]] = {}

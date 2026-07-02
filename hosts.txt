@@ -1,0 +1,15 @@
+# Hostfile del cluster MPI (Practica 5) - Grupo C
+#
+# Una linea por nodo:  <ip-o-hostname> slots=<nucleos a usar en ese nodo>
+# Editar con las IPs reales de las 3 PCs (Arch + Ubuntu + Kubuntu).
+#
+# Ejemplo:
+# 192.168.1.10 slots=4   # nodo-arch    (coordinador, rank 0)
+# 192.168.1.11 slots=4   # nodo-ubuntu
+# 192.168.1.12 slots=4   # nodo-kubuntu
+#
+# Ejecucion:
+#   mpiexec -n 4 -hostfile hosts.txt python -m mpi_monitoreo.practica_mpi \
+#       --estaciones 12 --ciclos 30 --intensidad 4000 --secuencial
+
+127.0.0.1 slots=4

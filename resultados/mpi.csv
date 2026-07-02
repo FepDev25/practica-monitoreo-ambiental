@@ -1,0 +1,4 @@
+num_procesos,num_estaciones,num_ciclos,intensidad,total_mediciones,tiempo_secuencial,tiempo_paralelo,speedup,eficiencia,mediciones_por_segundo,total_alertas,zona_mayor_riesgo
+1,12,30,4000,2160,16.162047,16.158246,1.0002,1.0002,133.68,46,El Vecino
+2,12,30,4000,2160,16.350338,9.440487,1.7319,0.8660,228.80,46,El Vecino
+4,12,30,4000,2160,16.761318,5.224590,3.2082,0.8020,413.43,46,El Vecino
