@@ -12,4 +12,6 @@
 #   mpiexec -n 4 -hostfile hosts.txt python -m mpi_monitoreo.practica_mpi \
 #       --estaciones 12 --ciclos 30 --intensidad 4000 --secuencial
 
-127.0.0.1 slots=4
+192.168.213.207  slots=18   # nodo-arch (Felipe, coordinador rank 0) - 20 nucleos
+192.168.213.137  slots=18   # nodo-ubuntu (Sami) - 24 nucleos
+192.168.213.9    slots=12   # nodo-kubuntu (Jose) - 12 nucleos, WiFi

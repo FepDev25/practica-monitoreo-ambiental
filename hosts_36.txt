@@ -1,0 +1,4 @@
+# Sweep 3 maquinas - N=36 (slots proporcionales 12:15:9 ~ nucleos 20:24:12)
+192.168.213.207  slots=12   # nodo-arch  (Felipe, rank 0)
+192.168.213.137  slots=15   # nodo-ubuntu (Sami)
+192.168.213.9    slots=9    # nodo-kubuntu (Jose)
