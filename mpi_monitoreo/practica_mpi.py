@@ -18,8 +18,10 @@ import argparse
 from mpi4py import MPI
 
 from monitoreo.controlador import ControladorMonitoreo
+from monitoreo.eventos import EventoMetricas
 
 from .controlador_mpi import ControladorMPI
+from .eventos_json import evento_a_json
 from .metricas import eficiencia, escribir_csv, speedup
 
 
@@ -33,6 +35,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--secuencial", action="store_true", help="correr referencia secuencial (Ts) en rank 0")
     p.add_argument("--salida", default="resultados", help="directorio de los CSV")
     p.add_argument("--no-csv", action="store_true", help="no escribir CSV, solo consola")
+    p.add_argument("--emitir", action="store_true", help="emitir eventos JSON a stdout para el feed en vivo de la GUI")
     return p.parse_args(argv)
 
 
@@ -49,6 +52,7 @@ def main(argv: list[str] | None = None) -> None:
         ventana=args.ventana,
         semilla_base=args.semilla,
         comm=comm,
+        emitir=args.emitir,
     )
     resultado = controlador.ejecutar()
 
@@ -58,6 +62,9 @@ def main(argv: list[str] | None = None) -> None:
     # --- Referencia secuencial (solo rank 0) para el aceleramiento ---
     ts: float | None = None
     if args.secuencial:
+        if args.emitir:
+            # Linea sin marcador -> la GUI la muestra en el log mientras espera.
+            print("Corriendo referencia secuencial (Ts), puede tardar...", flush=True)
         secuencial = ControladorMonitoreo(
             num_estaciones=args.estaciones,
             num_ciclos=args.ciclos,
@@ -69,9 +76,29 @@ def main(argv: list[str] | None = None) -> None:
 
     _reportar(resultado, size, ts)
 
+    if args.emitir:
+        _emitir_metricas(resultado, size, ts)
+
     if not args.no_csv:
         ruta = escribir_csv(resultado, num_procesos=size, ts=ts, salida=args.salida)
         print(f"\nResultado agregado a {ruta}")
+
+
+# Emite el EventoMetricas final (Tp/Ts/S/E) para la GUI.
+def _emitir_metricas(resultado, num_procesos: int, ts: float | None) -> None:
+    s = speedup(ts, resultado.tiempo_total)
+    print(evento_a_json(EventoMetricas(
+        modo=resultado.modo,
+        num_procesos=num_procesos,
+        num_estaciones=resultado.num_estaciones,
+        num_ciclos=resultado.num_ciclos,
+        intensidad=resultado.intensidad,
+        total_mediciones=resultado.total_mediciones,
+        tiempo_paralelo=resultado.tiempo_total,
+        tiempo_secuencial=ts,
+        speedup=s,
+        eficiencia=eficiencia(s, num_procesos),
+    )), flush=True)
 
 
 def _reportar(resultado, num_procesos: int, ts: float | None) -> None:

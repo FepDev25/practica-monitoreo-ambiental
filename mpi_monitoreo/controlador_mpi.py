@@ -25,15 +25,26 @@ aceleramiento frente a la version secuencial.
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 from mpi4py import MPI
 
 from monitoreo.analizador import AnalizadorDatos
 from monitoreo.config import es_alerta
 from monitoreo.estacion import crear_estacion
+from monitoreo.eventos import (
+    EventoAlerta,
+    EventoCicloFin,
+    EventoEstadoEstacion,
+    EventoFinSimulacion,
+    EventoInicio,
+    EventoMedicion,
+)
 from monitoreo.modelos import AlertaAmbiental, Medicion, ResultadoEjecucion
 
 from .consolidacion import consolidar, repartir_estaciones
+from .eventos_json import evento_a_json
 
 TAG_ALERTAS = 100
 
@@ -48,7 +59,7 @@ class ControladorMPI:
 
     MODO = "mpi"
 
-    def __init__(self, num_estaciones: int = 4, num_ciclos: int = 10, intensidad: int = 2000, ventana: int = 10, semilla_base: int = 1234, comm: MPI.Comm | None = None,) -> None:
+    def __init__(self, num_estaciones: int = 4, num_ciclos: int = 10, intensidad: int = 2000, ventana: int = 10, semilla_base: int = 1234, comm: MPI.Comm | None = None, emitir: bool = False,) -> None:
         if num_estaciones < 1:
             raise ValueError("num_estaciones debe ser >= 1")
         if num_ciclos < 1:
@@ -61,6 +72,56 @@ class ControladorMPI:
         self.comm = comm or MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
+        # Si emitir=True, cada rank imprime sus Eventos como lineas JSON a
+        # stdout para el feed en vivo de la GUI. Es un canal lateral: NO agrega
+        # comunicacion MPI ni altera el computo cronometrado; solo `print`.
+        self.emitir = emitir
+
+    # Imprime un Evento como linea JSON a stdout (un solo print con flush para
+    # que mpiexec lo reenvie enseguida y las lineas de ranks concurrentes no se
+    # entremezclen a nivel de bytes).
+    def _emit(self, evento: object) -> None:
+        if self.emitir:
+            print(evento_a_json(evento), flush=True)
+
+    # El rank 0 anuncia la ciudad completa: emite EventoInicio con todas las
+    # estaciones y, por cada una, un EventoEstadoEstacion "esperando" etiquetado
+    # con el rank dueno (round-robin), para que la GUI pinte la columna "rank"
+    # desde el arranque.
+    def _emitir_inicio(self, asignacion: list[list[int]]) -> None:
+        estaciones_meta: list[tuple[str, str, str]] = []
+        rank_de: dict[str, int] = {}
+        for r, indices in enumerate(asignacion):
+            for i in indices:
+                est = crear_estacion(i, semilla_base=self.semilla_base)
+                estaciones_meta.append((est.id, est.nombre, est.zona))
+                rank_de[est.id] = r
+        self._emit(EventoInicio(
+            modo=self.MODO,
+            num_estaciones=self.num_estaciones,
+            num_ciclos=self.num_ciclos,
+            intensidad=self.intensidad,
+            estaciones=estaciones_meta,
+        ))
+        for eid, _nombre, _zona in estaciones_meta:
+            self._emit(EventoEstadoEstacion(eid, "esperando", 0, rank_de[eid]))
+
+    # Al cerrar cada ciclo, este rank emite sus alertas y un EventoCicloFin con
+    # su tiempo de ciclo e indice de zona local (feed en vivo por ciclo).
+    def _emitir_ciclo(self, ciclo: int, mediciones: list[Medicion], alertas_ciclo: list[AlertaAmbiental], tiempo_ciclo: float, analizador: AnalizadorDatos,) -> None:
+        for a in alertas_ciclo:
+            self._emit(EventoAlerta(
+                estacion_id=a.estacion_id, zona=a.zona, variable=a.variable,
+                valor=a.valor, umbral=a.umbral, tipo=a.tipo,
+                severidad=a.severidad, ciclo=a.ciclo,
+            ))
+        self._emit(EventoCicloFin(
+            ciclo=ciclo,
+            tiempo_ciclo=tiempo_ciclo,
+            mediciones_ciclo=len(mediciones),
+            alertas_ciclo=len(alertas_ciclo),
+            indice_zona=dict(analizador._riesgo_acum_zona),
+        ))
 
     def ejecutar(self) -> ResultadoEjecucion | None:
         """Ejecuta la simulacion distribuida.
@@ -92,6 +153,11 @@ class ControladorMPI:
             repartir_estaciones(self.num_estaciones, size) if rank == 0 else None
         )
         indices_locales: list[int] = comm.scatter(asignacion, root=0)
+
+        # Feed en vivo: el rank 0 anuncia todas las estaciones y su rank dueno
+        # ANTES de la region cronometrada (sin perturbar Tp, sin concurrencia).
+        if self.emitir and rank == 0:
+            self._emitir_inicio(asignacion)
 
         # --- region cronometrada (Tp) ---
         comm.Barrier()
@@ -142,11 +208,26 @@ class ControladorMPI:
         alertas: list[AlertaAmbiental] = []
 
         for ciclo in range(self.num_ciclos):
+            tc0 = time.perf_counter()
             mediciones: list[Medicion] = []
             for estacion in estaciones:
-                mediciones.extend(estacion.generar_ciclo(ciclo, rank_mpi=self.rank))
+                meds = estacion.generar_ciclo(ciclo, rank_mpi=self.rank)
+                mediciones.extend(meds)
+                if self.emitir and meds:
+                    ultima = meds[-1]
+                    self._emit(EventoEstadoEstacion(estacion.id, "activa", ciclo, self.rank))
+                    self._emit(EventoMedicion(
+                        ultima.estacion_id, ultima.zona, ultima.variable,
+                        ultima.valor, ciclo,
+                    ))
             analizador.procesar_ciclo(mediciones, ciclo)
-            alertas.extend(self._evaluar_alertas(mediciones, ciclo))
+            alertas_ciclo = self._evaluar_alertas(mediciones, ciclo)
+            alertas.extend(alertas_ciclo)
+            if self.emitir:
+                self._emitir_ciclo(
+                    ciclo, mediciones, alertas_ciclo,
+                    time.perf_counter() - tc0, analizador,
+                )
 
         return {"alertas": alertas, "parcial": analizador.parciales()}
 
@@ -189,7 +270,7 @@ class ControladorMPI:
             total_mediciones / tiempo_total if tiempo_total > 0 else 0.0
         )
 
-        return ResultadoEjecucion(
+        resultado = ResultadoEjecucion(
             modo=self.MODO,
             num_estaciones=self.num_estaciones,
             num_ciclos=self.num_ciclos,
@@ -204,3 +285,14 @@ class ControladorMPI:
             indice_ambiental=dict(resumen["indice_ambiental"]),
             estadisticas=dict(resumen["estadisticas"]),
         )
+
+        # Feed en vivo: cierre de la simulacion con el resumen consolidado.
+        self._emit(EventoFinSimulacion(
+            tiempo_total=resultado.tiempo_total,
+            total_mediciones=resultado.total_mediciones,
+            total_alertas=resultado.total_alertas,
+            mediciones_por_segundo=resultado.mediciones_por_segundo,
+            zona_mayor_riesgo=resultado.zona_mayor_riesgo,
+            indice_ambiental=dict(resultado.indice_ambiental),
+        ))
+        return resultado
